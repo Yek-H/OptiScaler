@@ -694,6 +694,14 @@ bool Config::Reload(std::filesystem::path iniPath)
                 (MipmapBiasOverride.value() > 15.0 || MipmapBiasOverride.value() < -15.0))
                 MipmapBiasOverride.reset();
 
+            if (auto setting = readFloat("Mipmap", "MipmapMinLODOverride");
+                setting.has_value() && setting.value() <= 15.0f && setting.value() >= 0.0f)
+                MipmapMinLODOverride.set_from_config(setting);
+
+            if (MipmapMinLODOverride.has_value() &&
+                (MipmapMinLODOverride.value() > 15.0f || MipmapMinLODOverride.value() < 0.0f))
+                MipmapMinLODOverride.reset();
+
             MipmapBiasFixedOverride.set_from_config(readBool("Mipmap", "MipmapBiasFixedOverride"));
             MipmapBiasScaleOverride.set_from_config(readBool("Mipmap", "MipmapBiasScaleOverride"));
             MipmapBiasOverrideAll.set_from_config(readBool("Mipmap", "MipmapBiasOverrideAll"));

@@ -82,6 +82,21 @@ inline void ApplyMipBias(float& bias, float minLOD, float maxLOD, bool anisotrop
         State::Instance().lastMipBias = bias;
 }
 
+inline void ApplyMinLOD(float& minLOD, float maxLOD)
+{
+    if (!Config::Instance()->MipmapMinLODOverride.has_value() || maxLOD < 0.0f)
+        return;
+
+    const float requested = Config::Instance()->MipmapMinLODOverride.value();
+    const float forcedMinLOD = std::min(maxLOD, std::max(minLOD, requested));
+
+    if (forcedMinLOD != minLOD)
+    {
+        LOG_DEBUG("Overriding mipmap MinLOD {0} -> {1} (MaxLOD: {2})", minLOD, forcedMinLOD, maxLOD);
+        minLOD = forcedMinLOD;
+    }
+}
+
 template <typename TFilter> inline void ApplyAnisotropy(TFilter& filter, UINT& maxAnisotropy)
 {
     if (!Config::Instance()->AnisotropyOverride.has_value())
@@ -100,6 +115,7 @@ template <typename TDesc> inline void Apply(TDesc& desc, bool staticSampler = fa
         D3D12_DECODE_IS_ANISOTROPIC_FILTER(static_cast<D3D12_FILTER>(desc.Filter)) || desc.MaxAnisotropy > 1;
 
     ApplyMipBias(desc.MipLODBias, desc.MinLOD, desc.MaxLOD, staticSampler && anisotropic);
+    ApplyMinLOD(desc.MinLOD, desc.MaxLOD);
     ApplyAnisotropy(desc.Filter, desc.MaxAnisotropy);
 }
 } // namespace SamplerOverrides
