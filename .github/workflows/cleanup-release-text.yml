@@ -1,0 +1,50 @@
+name: Cleanup release text
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - ".github/workflows/cleanup-release-text.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove disclaimer from published release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh release edit bloodstrike-dx11-extreme-mip-v1 --notes "$(cat <<'EOF'
+          Custom OptiScaler build focused on Blood Strike / Direct3D 11.
+
+          Extreme mip preset:
+          - Mip LOD bias: +15
+          - Forced MinLOD: 15
+          - Fixed bias: enabled
+          - Override all samplers/textures: enabled
+
+          The forced MinLOD is the mechanism used to go beyond what a +15 bias alone can achieve.
+          This build intentionally prioritizes the DX11 use case.
+          EOF
+          )"
+
+          if gh release view bloodstrike-dx11-extreme-mip-v2 >/dev/null 2>&1; then
+            gh release edit bloodstrike-dx11-extreme-mip-v2 --notes "$(cat <<'EOF'
+          Custom OptiScaler build focused on Blood Strike / Direct3D 11.
+
+          v2 preset:
+          - Mip LOD bias: +15
+          - Force eligible DX11 SRVs to expose only their coarsest mip: enabled
+          - Fixed bias: enabled
+          - Override all sampler bias: enabled
+
+          v2 changes the mechanism after testing showed MinLOD=15 could look identical to +15 bias.
+          The SRV override also affects textures sampled through explicit LOD paths.
+          EOF
+          )"
+          fi
