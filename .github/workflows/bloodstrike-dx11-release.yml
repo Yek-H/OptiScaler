@@ -55,7 +55,8 @@ jobs:
 
           $ini = Get-Content (Join-Path $env:GITHUB_WORKSPACE "OptiScaler.ini") -Raw
           $ini = $ini -replace '(?m)^MipmapBiasOverride=auto$', 'MipmapBiasOverride=15.0'
-          $ini = $ini -replace '(?m)^MipmapMinLODOverride=auto
+          $ini = $ini -replace '(?m)^MipmapMinLODOverride=auto$', 'MipmapMinLODOverride=auto'
+          $ini = $ini -replace '(?m)^MipmapSRVForceCoarsest=auto$', 'MipmapSRVForceCoarsest=true'
           $ini = $ini -replace '(?m)^MipmapBiasFixedOverride=auto$', 'MipmapBiasFixedOverride=true'
           $ini = $ini -replace '(?m)^MipmapBiasScaleOverride=auto$', 'MipmapBiasScaleOverride=false'
           $ini = $ini -replace '(?m)^MipmapBiasOverrideAll=auto$', 'MipmapBiasOverrideAll=true'
@@ -73,10 +74,8 @@ jobs:
           - MipmapBiasScaleOverride=false
           - MipmapBiasOverrideAll=true
 
-          This is intentionally aggressive. In addition to +15 sampler bias, DX11 shader-resource
-          views for eligible sampled textures are recreated so only their coarsest mip is visible.
-          This reaches texture sampling paths that explicit shader LOD can otherwise keep outside
-          the normal sampler-bias behavior.
+          v2 forces eligible DX11 shader-resource views to expose only the coarsest mip.
+          This targets explicit-LOD texture sampling paths that can look unchanged with sampler bias alone.
 
           Intended target: Direct3D 11.
           No anti-cheat bypass or evasion code is included.
@@ -112,7 +111,7 @@ jobs:
           body: |
             Custom OptiScaler build focused on Blood Strike / Direct3D 11.
 
-            Extreme mip preset:
+            v2 preset:
             - Mip LOD bias: +15
             - Force eligible DX11 SRVs to expose only their coarsest mip: enabled
             - Fixed bias: enabled
@@ -120,134 +119,5 @@ jobs:
 
             v2 changes the mechanism after testing showed MinLOD=15 could look identical to +15 bias.
             The SRV override also affects textures sampled through explicit LOD paths.
-            This build intentionally prioritizes the DX11 use case. No anti-cheat bypass or evasion is included.
-          files: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
-, 'MipmapMinLODOverride=auto'
-          $ini = $ini -replace '(?m)^MipmapSRVForceCoarsest=auto
-          $ini = $ini -replace '(?m)^MipmapBiasFixedOverride=auto$', 'MipmapBiasFixedOverride=true'
-          $ini = $ini -replace '(?m)^MipmapBiasScaleOverride=auto$', 'MipmapBiasScaleOverride=false'
-          $ini = $ini -replace '(?m)^MipmapBiasOverrideAll=auto$', 'MipmapBiasOverrideAll=true'
-          $ini = $ini -replace '(?m)^CheckForUpdate=auto$', 'CheckForUpdate=false'
-          Set-Content -Path (Join-Path $output "OptiScaler.ini") -Value $ini -Encoding UTF8
-
-          @"
-          OptiScaler Blood Strike DX11 Extreme Mip v1
-
-          Preset:
-          - MipmapBiasOverride=15.0
-          - MipmapMinLODOverride=15.0
-          - MipmapBiasFixedOverride=true
-          - MipmapBiasScaleOverride=false
-          - MipmapBiasOverrideAll=true
-
-          This is intentionally aggressive. It forces the least detailed mip levels available.
-          It does not implement MipLODBias=30; Direct3D limits the bias itself, so MinLOD is used
-          in addition to +15 bias to create the requested "beyond +15" effect.
-
-          Intended target: Direct3D 11.
-          No anti-cheat bypass or evasion code is included.
-          "@ | Set-Content -Path (Join-Path $output "BLOODSTRIKE-DX11-EXTREME-MIP.txt") -Encoding UTF8
-
-      - name: Compress package
-        shell: pwsh
-        run: |
-          $output = Join-Path $env:GITHUB_WORKSPACE "x64\Release\a"
-          $archive = Join-Path $env:GITHUB_WORKSPACE $env:ARCHIVE_NAME
-          7z a -t7z $archive "$output\*"
-          if (-not (Test-Path $archive)) {
-            throw "Archive was not created"
-          }
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7.0.0
-        with:
-          name: OptiScaler-BloodStrike-DX11-ExtremeMip-v1
-          path: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
-          archive: false
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[bloodstrike-release]')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: bloodstrike-dx11-extreme-mip-v1
-          name: OptiScaler Blood Strike DX11 Extreme Mip v1
-          prerelease: false
-          make_latest: true
-          body: |
-            Custom OptiScaler build focused on Blood Strike / Direct3D 11.
-
-            Extreme mip preset:
-            - Mip LOD bias: +15
-            - Forced MinLOD: 15
-            - Fixed bias: enabled
-            - Override all samplers/textures: enabled
-
-            The forced MinLOD is the mechanism used to go beyond what a +15 bias alone can achieve.
-            This build intentionally prioritizes the DX11 use case. No anti-cheat bypass or evasion is included.
-          files: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
-, 'MipmapSRVForceCoarsest=true'
-          $ini = $ini -replace '(?m)^MipmapBiasFixedOverride=auto$', 'MipmapBiasFixedOverride=true'
-          $ini = $ini -replace '(?m)^MipmapBiasScaleOverride=auto$', 'MipmapBiasScaleOverride=false'
-          $ini = $ini -replace '(?m)^MipmapBiasOverrideAll=auto$', 'MipmapBiasOverrideAll=true'
-          $ini = $ini -replace '(?m)^CheckForUpdate=auto$', 'CheckForUpdate=false'
-          Set-Content -Path (Join-Path $output "OptiScaler.ini") -Value $ini -Encoding UTF8
-
-          @"
-          OptiScaler Blood Strike DX11 Extreme Mip v1
-
-          Preset:
-          - MipmapBiasOverride=15.0
-          - MipmapMinLODOverride=15.0
-          - MipmapBiasFixedOverride=true
-          - MipmapBiasScaleOverride=false
-          - MipmapBiasOverrideAll=true
-
-          This is intentionally aggressive. It forces the least detailed mip levels available.
-          It does not implement MipLODBias=30; Direct3D limits the bias itself, so MinLOD is used
-          in addition to +15 bias to create the requested "beyond +15" effect.
-
-          Intended target: Direct3D 11.
-          No anti-cheat bypass or evasion code is included.
-          "@ | Set-Content -Path (Join-Path $output "BLOODSTRIKE-DX11-EXTREME-MIP.txt") -Encoding UTF8
-
-      - name: Compress package
-        shell: pwsh
-        run: |
-          $output = Join-Path $env:GITHUB_WORKSPACE "x64\Release\a"
-          $archive = Join-Path $env:GITHUB_WORKSPACE $env:ARCHIVE_NAME
-          7z a -t7z $archive "$output\*"
-          if (-not (Test-Path $archive)) {
-            throw "Archive was not created"
-          }
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7.0.0
-        with:
-          name: OptiScaler-BloodStrike-DX11-ExtremeMip-v1
-          path: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
-          archive: false
-          compression-level: 0
-          if-no-files-found: error
-
-      - name: Publish GitHub Release
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[bloodstrike-release]')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: bloodstrike-dx11-extreme-mip-v1
-          name: OptiScaler Blood Strike DX11 Extreme Mip v1
-          prerelease: false
-          make_latest: true
-          body: |
-            Custom OptiScaler build focused on Blood Strike / Direct3D 11.
-
-            Extreme mip preset:
-            - Mip LOD bias: +15
-            - Forced MinLOD: 15
-            - Fixed bias: enabled
-            - Override all samplers/textures: enabled
-
-            The forced MinLOD is the mechanism used to go beyond what a +15 bias alone can achieve.
-            This build intentionally prioritizes the DX11 use case. No anti-cheat bypass or evasion is included.
+            No anti-cheat bypass or evasion is included.
           files: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
