@@ -702,6 +702,7 @@ bool Config::Reload(std::filesystem::path iniPath)
                 (MipmapMinLODOverride.value() > 15.0f || MipmapMinLODOverride.value() < 0.0f))
                 MipmapMinLODOverride.reset();
 
+            MipmapSRVForceCoarsest.set_from_config(readBool("Mipmap", "MipmapSRVForceCoarsest"));
             MipmapBiasFixedOverride.set_from_config(readBool("Mipmap", "MipmapBiasFixedOverride"));
             MipmapBiasScaleOverride.set_from_config(readBool("Mipmap", "MipmapBiasScaleOverride"));
             MipmapBiasOverrideAll.set_from_config(readBool("Mipmap", "MipmapBiasOverrideAll"));
@@ -1918,6 +1919,8 @@ bool Config::SaveIni()
     {
         ini.SetValue("Mipmap", "MipmapBiasOverride",
                      GetFloatValue(Instance()->MipmapBiasOverride.value_for_config()).c_str());
+        ini.SetValue("Mipmap", "MipmapSRVForceCoarsest",
+                     GetBoolValue(Instance()->MipmapSRVForceCoarsest.value_for_config()).c_str());
         ini.SetValue("Mipmap", "MipmapBiasOverrideAll",
                      GetBoolValue(Instance()->MipmapBiasOverrideAll.value_for_config()).c_str());
         ini.SetValue("Mipmap", "MipmapBiasFixedOverride",
