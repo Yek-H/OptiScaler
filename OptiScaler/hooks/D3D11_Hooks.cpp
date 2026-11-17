@@ -31,12 +31,14 @@ bool _skipDx11Create = false;
 
 // DirectX
 using PFN_CreateSamplerState = rewrite_signature<decltype(&ID3D11Device::CreateSamplerState)>::type;
+using PFN_CreateShaderResourceView = rewrite_signature<decltype(&ID3D11Device::CreateShaderResourceView)>::type;
 
 using PFN_Release = rewrite_signature<decltype(&IUnknown::Release)>::type;
 
 static PFN_D3D11_CREATE_DEVICE o_D3D11CreateDevice = nullptr;
 static PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN o_D3D11CreateDeviceAndSwapChain = nullptr;
 static PFN_CreateSamplerState o_CreateSamplerState = nullptr;
+static PFN_CreateShaderResourceView o_CreateShaderResourceView = nullptr;
 static PFN_D3D11ON12_CREATE_DEVICE o_D3D11On12CreateDevice = nullptr;
 
 // One original per hooked Release, devices of other classes (debug layer, wrappers) have their own
@@ -46,6 +48,9 @@ static std::mutex _d3d11DeviceReleaseMutex;
 
 static HRESULT hkCreateSamplerState(ID3D11Device* This, const D3D11_SAMPLER_DESC* pSamplerDesc,
                                     ID3D11SamplerState** ppSamplerState);
+static HRESULT hkCreateShaderResourceView(ID3D11Device* This, ID3D11Resource* pResource,
+                                          const D3D11_SHADER_RESOURCE_VIEW_DESC* pDesc,
+                                          ID3D11ShaderResourceView** ppSRView);
 
 static ULONG D3D11DeviceRelease(IUnknown* device, PFN_Release original)
 {
@@ -127,7 +132,7 @@ static void HookToDeviceLocal(ID3D11Device* InDevice)
 
     HookD3D11DeviceRelease(InDevice);
 
-    if (o_CreateSamplerState != nullptr)
+    if (o_CreateSamplerState != nullptr && o_CreateShaderResourceView != nullptr)
         return;
 
     LOG_DEBUG("Dx11");
@@ -135,21 +140,42 @@ static void HookToDeviceLocal(ID3D11Device* InDevice)
     // Get the vtable pointer
     PVOID* pVTable = *(PVOID**) InDevice;
 
-    o_CreateSamplerState = (PFN_CreateSamplerState) pVTable[23];
-
-    // Apply the detour
-    if (o_CreateSamplerState != nullptr)
+    if (o_CreateSamplerState == nullptr)
     {
-        DetourTransactionBegin();
-        DetourUpdateThread(GetCurrentThread());
+        o_CreateSamplerState = (PFN_CreateSamplerState) pVTable[23];
 
-        DetourAttach(&(PVOID&) o_CreateSamplerState, hkCreateSamplerState);
-
-        auto detourResult = DetourTransactionCommit();
-        if (detourResult != NO_ERROR)
+        if (o_CreateSamplerState != nullptr)
         {
-            LOG_ERROR("Failed to hook ID3D11Device: {:X}", detourResult);
-            o_CreateSamplerState = nullptr;
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourAttach(&(PVOID&) o_CreateSamplerState, hkCreateSamplerState);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("Failed to hook ID3D11Device::CreateSamplerState: {:X}", detourResult);
+                o_CreateSamplerState = nullptr;
+            }
+        }
+    }
+
+    if (o_CreateShaderResourceView == nullptr)
+    {
+        // ID3D11Device vtable slot 7: CreateShaderResourceView.
+        o_CreateShaderResourceView = (PFN_CreateShaderResourceView) pVTable[7];
+
+        if (o_CreateShaderResourceView != nullptr)
+        {
+            DetourTransactionBegin();
+            DetourUpdateThread(GetCurrentThread());
+            DetourAttach(&(PVOID&) o_CreateShaderResourceView, hkCreateShaderResourceView);
+
+            auto detourResult = DetourTransactionCommit();
+            if (detourResult != NO_ERROR)
+            {
+                LOG_ERROR("Failed to hook ID3D11Device::CreateShaderResourceView: {:X}", detourResult);
+                o_CreateShaderResourceView = nullptr;
+            }
         }
     }
 }
@@ -550,6 +576,110 @@ static HRESULT hkCreateSamplerState(ID3D11Device* This, const D3D11_SAMPLER_DESC
     return o_CreateSamplerState(This, &newDesc, ppSamplerState);
 }
 
+static bool ForceCoarsestMip(D3D11_SHADER_RESOURCE_VIEW_DESC& desc, UINT resourceMipLevels)
+{
+    auto forceRange = [resourceMipLevels](UINT& mostDetailedMip, UINT& mipLevels)
+    {
+        UINT availableMipLevels = mipLevels;
+
+        if (availableMipLevels == UINT(-1))
+        {
+            if (resourceMipLevels <= mostDetailedMip)
+                return false;
+
+            availableMipLevels = resourceMipLevels - mostDetailedMip;
+        }
+
+        if (availableMipLevels <= 1)
+            return false;
+
+        mostDetailedMip += availableMipLevels - 1;
+        mipLevels = 1;
+        return true;
+    };
+
+    switch (desc.ViewDimension)
+    {
+    case D3D11_SRV_DIMENSION_TEXTURE2D:
+        return forceRange(desc.Texture2D.MostDetailedMip, desc.Texture2D.MipLevels);
+    case D3D11_SRV_DIMENSION_TEXTURE2DARRAY:
+        return forceRange(desc.Texture2DArray.MostDetailedMip, desc.Texture2DArray.MipLevels);
+    case D3D11_SRV_DIMENSION_TEXTURECUBE:
+        return forceRange(desc.TextureCube.MostDetailedMip, desc.TextureCube.MipLevels);
+    case D3D11_SRV_DIMENSION_TEXTURECUBEARRAY:
+        return forceRange(desc.TextureCubeArray.MostDetailedMip, desc.TextureCubeArray.MipLevels);
+    default:
+        return false;
+    }
+}
+
+VALIDATE_HOOK(hkCreateShaderResourceView, PFN_CreateShaderResourceView)
+static HRESULT hkCreateShaderResourceView(ID3D11Device* This, ID3D11Resource* pResource,
+                                          const D3D11_SHADER_RESOURCE_VIEW_DESC* pDesc,
+                                          ID3D11ShaderResourceView** ppSRView)
+{
+    const auto result = o_CreateShaderResourceView(This, pResource, pDesc, ppSRView);
+
+    if (FAILED(result) || ppSRView == nullptr || *ppSRView == nullptr || pResource == nullptr ||
+        !Config::Instance()->MipmapSRVForceCoarsest.value_or_default())
+        return result;
+
+    ID3D11Texture2D* texture = nullptr;
+    if (FAILED(pResource->QueryInterface(IID_PPV_ARGS(&texture))) || texture == nullptr)
+        return result;
+
+    D3D11_TEXTURE2D_DESC textureDesc {};
+    texture->GetDesc(&textureDesc);
+    texture->Release();
+
+    // Keep render/depth/UAV resources and MSAA resources untouched. The override targets
+    // regular sampled material textures only, reducing the chance of breaking post-processing.
+    constexpr UINT excludedBindFlags =
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_UNORDERED_ACCESS;
+
+    if (textureDesc.SampleDesc.Count > 1 || (textureDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) == 0 ||
+        (textureDesc.BindFlags & excludedBindFlags) != 0 || textureDesc.Width < 128 || textureDesc.Height < 128)
+        return result;
+
+    UINT resourceMipLevels = textureDesc.MipLevels;
+    if (resourceMipLevels == 0)
+    {
+        UINT maxDimension = std::max(textureDesc.Width, textureDesc.Height);
+        resourceMipLevels = 1;
+        while (maxDimension > 1)
+        {
+            maxDimension >>= 1;
+            ++resourceMipLevels;
+        }
+    }
+
+    if (resourceMipLevels <= 1)
+        return result;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC newDesc {};
+    (*ppSRView)->GetDesc(&newDesc);
+
+    if (!ForceCoarsestMip(newDesc, resourceMipLevels))
+        return result;
+
+    ID3D11ShaderResourceView* replacement = nullptr;
+    const auto replacementResult = o_CreateShaderResourceView(This, pResource, &newDesc, &replacement);
+
+    if (SUCCEEDED(replacementResult) && replacement != nullptr)
+    {
+        LOG_DEBUG("DX11 SRV forced to coarsest mip, texture: {}x{}, mips: {}", textureDesc.Width, textureDesc.Height,
+                  resourceMipLevels);
+        (*ppSRView)->Release();
+        *ppSRView = replacement;
+    }
+    else
+    {
+        LOG_WARN("Failed to recreate DX11 SRV at coarsest mip: {:X}", replacementResult);
+    }
+
+    return result;
+}
+
 void D3D11Hooks::HookToDevice(ID3D11Device* InDevice) { HookToDeviceLocal(InDevice); }
 
 void D3D11Hooks::Hook(HMODULE dx11Module)
@@ -620,6 +750,9 @@ void D3D11Hooks::Unhook()
     if (o_CreateSamplerState != nullptr)
         DetourDetach(&(PVOID&) o_CreateSamplerState, hkCreateSamplerState);
 
+    if (o_CreateShaderResourceView != nullptr)
+        DetourDetach(&(PVOID&) o_CreateShaderResourceView, hkCreateShaderResourceView);
+
     auto detourResult = DetourTransactionCommit();
     if (detourResult != NO_ERROR)
     {
@@ -629,6 +762,7 @@ void D3D11Hooks::Unhook()
     {
         o_D3D11CreateDevice = nullptr;
         o_CreateSamplerState = nullptr;
+        o_CreateShaderResourceView = nullptr;
         o_D3D11On12CreateDevice = nullptr;
         o_D3D11CreateDeviceAndSwapChain = nullptr;
 
