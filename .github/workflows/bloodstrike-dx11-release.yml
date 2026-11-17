@@ -78,7 +78,6 @@ jobs:
           This targets explicit-LOD texture sampling paths that can look unchanged with sampler bias alone.
 
           Intended target: Direct3D 11.
-          No anti-cheat bypass or evasion code is included.
           "@ | Set-Content -Path (Join-Path $output "BLOODSTRIKE-DX11-EXTREME-MIP.txt") -Encoding UTF8
 
       - name: Compress package
@@ -119,5 +118,4 @@ jobs:
 
             v2 changes the mechanism after testing showed MinLOD=15 could look identical to +15 bias.
             The SRV override also affects textures sampled through explicit LOD paths.
-            No anti-cheat bypass or evasion is included.
           files: ${{ github.workspace }}\${{ env.ARCHIVE_NAME }}
