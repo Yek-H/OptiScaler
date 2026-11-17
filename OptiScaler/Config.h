@@ -505,7 +505,8 @@ class Config
 
     CustomOptional<bool> SimulateWaitableObject { false };
 
-    CustomOptional<float, NoDefault> MipmapBiasOverride; // disabled by default
+    CustomOptional<float, NoDefault> MipmapBiasOverride;   // disabled by default
+    CustomOptional<float, NoDefault> MipmapMinLODOverride; // disabled by default
     CustomOptional<bool> MipmapBiasFixedOverride { false };
     CustomOptional<bool> MipmapBiasScaleOverride { false };
     CustomOptional<bool> MipmapBiasOverrideAll { false };
