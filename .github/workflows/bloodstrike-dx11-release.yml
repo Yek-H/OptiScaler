@@ -10,7 +10,7 @@ on:
       - "OptiScaler.ini"
       - ".github/workflows/bloodstrike-dx11-release.yml"
   push:
-    branches: [ "master" ]
+    branches: [ "master", "bloodstrike-dx11-extreme-mip" ]
     paths:
       - "OptiScaler/Config.h"
       - "OptiScaler/Config.cpp"
