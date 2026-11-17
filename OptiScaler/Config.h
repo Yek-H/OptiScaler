@@ -507,6 +507,7 @@ class Config
 
     CustomOptional<float, NoDefault> MipmapBiasOverride;   // disabled by default
     CustomOptional<float, NoDefault> MipmapMinLODOverride; // disabled by default
+    CustomOptional<bool> MipmapSRVForceCoarsest { false };
     CustomOptional<bool> MipmapBiasFixedOverride { false };
     CustomOptional<bool> MipmapBiasScaleOverride { false };
     CustomOptional<bool> MipmapBiasOverrideAll { false };
